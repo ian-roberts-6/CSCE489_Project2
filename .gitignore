@@ -1,0 +1,4 @@
+# Scripts for testing
+*.ps1
+#Object files
+*.o

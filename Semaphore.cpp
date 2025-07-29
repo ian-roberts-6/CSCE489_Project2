@@ -11,7 +11,8 @@
  *************************************************************************************/
 
 Semaphore::Semaphore(int count) {
-
+    s_value = count;
+    pthread_mutex_init(&semaphore_lock, NULL);
 }
 
 
@@ -22,6 +23,7 @@ Semaphore::Semaphore(int count) {
  *************************************************************************************/
 
 Semaphore::~Semaphore() {
+    pthread_mutex_destroy(&semaphore_lock);
 }
 
 
