@@ -14,6 +14,7 @@ public:
 private:
 	int s_value;
 	pthread_mutex_t semaphore_lock;
+	pthread_cond_t semaphore_incremented;
 };
 
 #endif

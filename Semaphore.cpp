@@ -13,6 +13,7 @@
 Semaphore::Semaphore(int count) {
     s_value = count;
     pthread_mutex_init(&semaphore_lock, NULL);
+    pthread_cond_init(&semaphore_incremented, NULL);
 }
 
 
@@ -24,6 +25,7 @@ Semaphore::Semaphore(int count) {
 
 Semaphore::~Semaphore() {
     pthread_mutex_destroy(&semaphore_lock);
+    pthread_cond_destroy(&semaphore_incremented);
 }
 
 
@@ -33,7 +35,12 @@ Semaphore::~Semaphore() {
  *************************************************************************************/
 
 void Semaphore::wait() {
-
+    pthread_mutex_lock(&semaphore_lock);
+    while (s_value <= 0) {
+        pthread_cond_wait(&semaphore_incremented, &semaphore_lock);
+    }
+    s_value--;
+    pthread_mutex_unlock(&semaphore_lock);
 }
 
 
@@ -43,7 +50,10 @@ void Semaphore::wait() {
  *************************************************************************************/
 
 void Semaphore::signal() {
-
+    pthread_mutex_lock(&semaphore_lock);
+    s_value++;
+    pthread_mutex_unlock(&semaphore_lock);
+    pthread_cond_signal(&semaphore_incremented);
 }
 
 
