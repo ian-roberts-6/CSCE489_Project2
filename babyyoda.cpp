@@ -17,7 +17,10 @@ Semaphore *full = NULL;
 
 pthread_mutex_t buf_mutex;
 
-int buffer = 0;
+int* ring_buffer;
+int shelf_size;
+int producer_index = 0;
+int consumer_index = 0;
 int consumed = 0;
 static bool quitthreads = false;
 
@@ -53,9 +56,10 @@ void *producer_routine(void *data) {
 		// Place item on the next shelf slot by first setting the mutex to protect our buffer vars
 		pthread_mutex_lock(&buf_mutex);
 
-		buffer = serialnum;
+		ring_buffer[producer_index] = serialnum;
 		serialnum++;
 		left_to_produce--;
+		producer_index = (producer_index + 1) % shelf_size;
 
 		pthread_mutex_unlock(&buf_mutex);
 		
@@ -68,6 +72,7 @@ void *producer_routine(void *data) {
 		usleep((useconds_t) (rand() % 200000));
 	
 	}
+	quitthreads = true;
 	return NULL;
 }
 
@@ -85,6 +90,7 @@ void *producer_routine(void *data) {
 void *consumer_routine(void *data) {
 
 	unsigned int consumer_id = *(unsigned int*) data;
+	int bought_serial_num = -1;
 
 
 	while (!quitthreads) {
@@ -92,15 +98,18 @@ void *consumer_routine(void *data) {
 
 		// Semaphore to see if there are any items to take
 		empty->wait();
-
 		// Take an item off the shelf
 		pthread_mutex_lock(&buf_mutex);
- 
-		printf("   Consumer bought Yoda #%d.\n", buffer);
-		buffer = 0;
+		
+		bought_serial_num = ring_buffer[consumer_index];
+		ring_buffer[consumer_index] = 0;
 		consumed++;
+		consumer_index = (consumer_index + 1) % shelf_size;
 	
 		pthread_mutex_unlock(&buf_mutex);
+
+		printf("   Consumer %u bought Yoda #%d.\n", consumer_id, bought_serial_num);
+
 
 		// Consumers wait up to one second
 		usleep((useconds_t) (rand() % 1000000));
@@ -130,7 +139,7 @@ int main(int argv, const char *argc[]) {
 	}
 
 	// User input on the size of the shelf, commented out for now. 
-	const int shelf_size =  1; //(int) strtol(argc[2], NULL, 10);
+	shelf_size =  1; //(int) strtol(argc[2], NULL, 10);
 
 	// User input on the number of consumers
 	const unsigned int NUM_CONSUMERS = (unsigned int) strtol(argc[2], NULL, 10);
@@ -140,10 +149,13 @@ int main(int argv, const char *argc[]) {
 
 
 	printf("Producing %d today.\n", num_produce);
+
+	// Initialize our buffer
+	ring_buffer = (int*) malloc(shelf_size * sizeof(int));
 	
 	// Initialize our semaphores
 	empty = new Semaphore(0);
-	full = new Semaphore(1);
+	full = new Semaphore(shelf_size);
 
 	pthread_mutex_init(&buf_mutex, NULL); // Initialize our buffer mutex
 
@@ -164,7 +176,6 @@ int main(int argv, const char *argc[]) {
 	printf("The manufacturer has completed his work for the day.\n");
 
 	printf("Waiting for consumer to buy up the rest.\n");
-	quitthreads = true;
 	// Give the consumers a second to finish snatching up items
 	while (consumed < num_produce)
 		sleep(1);
@@ -178,6 +189,7 @@ int main(int argv, const char *argc[]) {
 	delete empty;
 	delete full;
 	free(consumers);
+	free(ring_buffer);
 
 	printf("Producer/Consumer simulation complete!\n");
 
