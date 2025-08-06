@@ -116,7 +116,7 @@ void *consumer_routine(void *data) {
 
 		empty_slots->signal();
 	}
-	printf("Consumer goes home.\n");
+	// printf("Consumer goes home.\n");
 
 	return NULL;	
 }
@@ -182,11 +182,6 @@ int main(int argv, const char *argc[]) {
 	while (consumed < num_produce)
 		sleep(1);
 	quitthreads = true;
-
-	// Now make sure they all exited
-	// for (unsigned int i=0; i<NUM_CONSUMERS; i++) {
-	// 	pthread_join(consumers[i], NULL);
-	// }
 
 	// We are exiting, clean up
 	delete empty_slots;
