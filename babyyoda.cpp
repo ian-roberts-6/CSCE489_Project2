@@ -19,6 +19,7 @@ pthread_mutex_t buf_mutex;
 
 int buffer = 0;
 int consumed = 0;
+static bool quitthreads = false;
 
 
 /*************************************************************************************
@@ -82,19 +83,19 @@ void *producer_routine(void *data) {
  *************************************************************************************/
 
 void *consumer_routine(void *data) {
-	(void) data;
 
-	bool quitthreads = false;
+	unsigned int consumer_id = *(unsigned int*) data;
+
 
 	while (!quitthreads) {
-		printf("Consumer wants to buy a Yoda...\n");
+		printf("Consumer %u wants to buy a Yoda...\n", consumer_id);
 
 		// Semaphore to see if there are any items to take
 		empty->wait();
 
 		// Take an item off the shelf
 		pthread_mutex_lock(&buf_mutex);
-	
+ 
 		printf("   Consumer bought Yoda #%d.\n", buffer);
 		buffer = 0;
 		consumed++;
@@ -123,13 +124,19 @@ void *consumer_routine(void *data) {
 int main(int argv, const char *argc[]) {
 
 	// Get our argument parameters
-	if (argv < 2) {
-		printf("Invalid parameters. Format: %s <max_items>\n", argc[0]);
+	if (argv < 4) {
+		printf("Invalid parameters. Format: %s <shelf_size> <num_consumers> <max_items>\n", argc[0]);
 		exit(0);
 	}
 
+	// User input on the size of the shelf, commented out for now. 
+	const int shelf_size =  1; //(int) strtol(argc[2], NULL, 10);
+
+	// User input on the number of consumers
+	const unsigned int NUM_CONSUMERS = (unsigned int) strtol(argc[2], NULL, 10);
+
 	// User input on the size of the buffer
-	int num_produce = (unsigned int) strtol(argc[1], NULL, 10);
+	int num_produce = (unsigned int) strtol(argc[3], NULL, 10);
 
 
 	printf("Producing %d today.\n", num_produce);
@@ -141,13 +148,15 @@ int main(int argv, const char *argc[]) {
 	pthread_mutex_init(&buf_mutex, NULL); // Initialize our buffer mutex
 
 	pthread_t producer;
-	pthread_t consumer;
+	pthread_t *consumers = (pthread_t*) malloc(NUM_CONSUMERS*sizeof(pthread_t));
 
 	// Launch our producer thread
 	pthread_create(&producer, NULL, producer_routine, (void *) &num_produce);
 
-	// Launch our consumer thread
-	pthread_create(&consumer, NULL, consumer_routine, NULL);
+	// Launch our consumer threads
+	for (unsigned int i = 0; i < NUM_CONSUMERS; i++) {
+		pthread_create(&(consumers[i]), NULL, consumer_routine, &i);
+	}
 
 	// Wait for our producer thread to finish up
 	pthread_join(producer, NULL);
@@ -155,19 +164,20 @@ int main(int argv, const char *argc[]) {
 	printf("The manufacturer has completed his work for the day.\n");
 
 	printf("Waiting for consumer to buy up the rest.\n");
-
+	quitthreads = true;
 	// Give the consumers a second to finish snatching up items
 	while (consumed < num_produce)
 		sleep(1);
 
 	// Now make sure they all exited
-//	for (unsigned int i=0; i<NUM_CONSUMERS; i++) {
-//		pthread_join(consumers[i], NULL);
-//	}
+	// for (unsigned int i=0; i<NUM_CONSUMERS; i++) {
+	// 	pthread_join(consumers[i], NULL);
+	// }
 
 	// We are exiting, clean up
 	delete empty;
-	delete full;		
+	delete full;
+	free(consumers);
 
 	printf("Producer/Consumer simulation complete!\n");
 
