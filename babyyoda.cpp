@@ -23,7 +23,10 @@ int producer_index = 0;
 int consumer_index = 0;
 int consumed = 0;
 static bool quitthreads = false;
-
+// The current serial number (incremented)
+unsigned int serialnum = 1;
+int num_produce = 0;
+int left_to_produce = 0;
 
 /*************************************************************************************
  * producer_routine - this function is called when the producer thread is created.
@@ -39,38 +42,45 @@ void *producer_routine(void *data) {
 
 	time_t rand_seed;
 	srand((unsigned int) time(&rand_seed));
-
-	// The current serial number (incremented)
-	unsigned int serialnum = 1;
 	
-	// We know the data pointer is an integer that indicates the number to produce
-	int left_to_produce = *((int *) data);
+	// We know the data pointer is an integer that indicates the producer's id
+	int producer_id = *(unsigned int*) data;
+	int current_serial_num = 0;
+	free(data);
+	bool placed = false;
 
 	// Loop through the amount we're going to produce and place into the buffer
 	while (left_to_produce > 0) {
-		printf("Producer wants to put Yoda #%d into buffer...\n", serialnum);
+		printf("Producer %u wants to put a Yoda into buffer...\n", producer_id);
 
 		// Semaphore check to make sure there is an available slot
 		empty_slots->wait();
 
 		// Place item on the next shelf slot by first setting the mutex to protect our buffer vars
 		pthread_mutex_lock(&buf_mutex);
-
-		ring_buffer[producer_index] = serialnum;
-		serialnum++;
-		left_to_produce--;
-		producer_index = (producer_index + 1) % shelf_size;
-
+		if (left_to_produce > 0) {
+			ring_buffer[producer_index] = serialnum;
+			current_serial_num = serialnum;
+			serialnum++;
+			left_to_produce--;
+			producer_index = (producer_index + 1) % shelf_size;
+			placed = true;
+		} else {
+			placed = false;
+		}
 		pthread_mutex_unlock(&buf_mutex);
+		if (placed) {
+			printf("   Producer %u put Yoda #%u on shelf.\n", producer_id, current_serial_num);
+			// Semaphore signal that there are items available
+			full_slots->signal();
+		} else {
+			empty_slots -> signal(); //Release the empty slot currently held. 
+		}
 		
-		printf("   Yoda %u put on shelf.\n", (serialnum - 1));
-		
-		// Semaphore signal that there are items available
-		full_slots->signal();
+
 
 		// random sleep but he makes them fast so 1/20 of a second
-		usleep((useconds_t) (rand() % 200000));
-	
+		usleep((useconds_t) (rand() % 200000));	
 	}
 	return NULL;
 }
@@ -132,6 +142,8 @@ void *consumer_routine(void *data) {
 
 int main(int argv, const char *argc[]) {
 
+	const unsigned int NUM_PRODUCERS = 2;
+
 	// Get our argument parameters
 	if (argv < 4) {
 		printf("Invalid parameters. Format: %s <shelf_size> <num_consumers> <max_items>\n", argc[0]);
@@ -145,8 +157,8 @@ int main(int argv, const char *argc[]) {
 	const unsigned int NUM_CONSUMERS = (unsigned int) strtol(argc[2], NULL, 10);
 
 	// User input on the size of the buffer
-	int num_produce = (unsigned int) strtol(argc[3], NULL, 10);
-
+	num_produce = (unsigned int) strtol(argc[3], NULL, 10);
+	left_to_produce = num_produce;
 
 	printf("Producing %d today.\n", num_produce);
 
@@ -159,11 +171,17 @@ int main(int argv, const char *argc[]) {
 
 	pthread_mutex_init(&buf_mutex, NULL); // Initialize our buffer mutex
 
-	pthread_t producer;
+	pthread_t *producers = (pthread_t*) malloc(NUM_PRODUCERS*sizeof(pthread_t));
 	pthread_t *consumers = (pthread_t*) malloc(NUM_CONSUMERS*sizeof(pthread_t));
 
-	// Launch our producer thread
-	pthread_create(&producer, NULL, producer_routine, (void *) &num_produce);
+	
+	// Launch our producer threads
+	for (unsigned int i = 0; i < NUM_PRODUCERS; i++) {
+		int* id = (int*) malloc(1*sizeof(int));	//Note: this allocated memory is freed in the consumer function.
+		*id = i;
+		pthread_create(&producers[i], NULL, producer_routine, (void *) id);
+
+	}
 
 	// Launch our consumer threads
 	for (unsigned int i = 0; i < NUM_CONSUMERS; i++) {
@@ -172,8 +190,10 @@ int main(int argv, const char *argc[]) {
 		pthread_create(&(consumers[i]), NULL, consumer_routine, id); 
 	}
 
-	// Wait for our producer thread to finish up
-	pthread_join(producer, NULL);
+	// Wait for our producer threads to finish up
+	for (unsigned int i = 0; i < NUM_PRODUCERS; i++) {
+		pthread_join(producers[i], NULL);
+	}
 
 	printf("The manufacturer has completed his work for the day.\n");
 
@@ -187,6 +207,7 @@ int main(int argv, const char *argc[]) {
 	delete empty_slots;
 	delete full_slots;
 	free(consumers);
+	free(producers);
 	free(ring_buffer);
 
 	printf("Producer/Consumer simulation complete!\n");
